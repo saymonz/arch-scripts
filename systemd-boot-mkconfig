@@ -33,9 +33,9 @@ function checkFile
 {
 	if [ -f "$1" ]
 	then
-		echo -e "\t\tFound:\t\t$1"
+		echo -e "    Found:   $1"
 	else
-		echo -e "\t\tMissing:\t$1"
+		echo -e "    Missing: $1"
 		ok+=1
 	fi
 }
@@ -70,28 +70,28 @@ function writeLoaderConf
 
 	if [ $ok -ne 0 ]
 	then
-		echo -e "\t\tSomething's missing, aborting..."
+		echo -e "    Kernel or initramfs missing, aborting..."
 		return 1
 	fi
 
 	# Write config...
-	res="title	$OS_PRETTY_NAME\n"
+	res="title      $OS_PRETTY_NAME\n"
 	res+="version    $e_version\n"
 	res+="machine-id $MACHINE_ID\n"
-	res+="linux	$e_linux\n"
+	res+="linux      $e_linux\n"
 
 	ok=0
 	checkFile "$BOOT_PATH/intel-ucode.img"
 	if [ $ok -eq 0 ]
 	then
-		res+="initrd	/intel-ucode.img\n"
+		res+="initrd     /intel-ucode.img\n"
 
 	fi
 
-	res+="initrd	$e_initrd\n"
-	res+="options	$e_options\n"
+	res+="initrd     $e_initrd\n"
+	res+="options    $e_options\n"
 
-	echo -e "\t\tWriting:\t$e_file\n"
+	echo -e "    Writing: $e_file\n"
 	echo -en "$res" > "$e_file"
 }
 
@@ -104,9 +104,9 @@ for preset in $PRESETS
 do
 	preset=$(echo "$preset" | rev | cut -d'/' -f 1 - | rev | cut -d'.' -f 1 -)
 	echo -e "\nGenerating $preset entries:"
-	echo -e "\tGenerating default entry:"
+	echo -e "  Generating default entry:"
 	writeLoaderConf "$preset" 'default'
-	echo -e "\tGenerating fallback entry:"
+	echo -e "  Generating fallback entry:"
 	writeLoaderConf "$preset" 'fallback'
 done
 
