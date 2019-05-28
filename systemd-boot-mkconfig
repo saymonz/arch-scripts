@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 
-if [ $(whoami) != 'root' ]
+if [ "$(whoami)" != 'root' ]
 then
 	echo -e "This script must be run as root. Exiting."
 	exit
@@ -28,18 +28,30 @@ KERN_CMDLINE_DEFAULT='root=UUID=3a41b659-2130-41ec-bc8f-a5c1bf67b845 rw quiet lo
 # Kernel command line for fallback boot
 KERN_CMDLINE_FALLBACK='root=UUID=3a41b659-2130-41ec-bc8f-a5c1bf67b845 rw'
 
+
+function checkFile
+{
+	if [ -f "$1" ]
+	then
+		echo -e "\t\tFound:\t\t$1"
+	else
+		echo -e "\t\tMissing:\t$1"
+		ok+=1
+	fi
+}
+
 function writeLoaderConf
 {
 #	kver="$(LANG=C pacman -Qi $1 | grep "Version" | cut -d':' -f 2 | xargs)"
 
 	e_linux="/vmlinuz-$1"
 
-	if [ $2 == "default" ]
+	if [ "$2" == "default" ]
 	then
 		e_version="$1"
 		e_initrd="/initramfs-$1.img"
 		e_options="$KERN_CMDLINE_DEFAULT"
-	elif [ $2 == 'fallback' ]
+	elif [ "$2" == 'fallback' ]
 	then
 		e_version="$1-fallback"
 		e_initrd="/initramfs-$1-fallback.img"
@@ -52,20 +64,14 @@ function writeLoaderConf
 
 
 	# We check everything is there...
-	if [ -f $BOOT_PATH$e_initrd ]
-	then
-		echo -e "\t\tFound initramfs: $BOOT_PATH$e_initrd"
-	else
-		echo -e "\t\tMissing initramfs $BOOT_PATH$e_initrd, aborting."
-		return
-	fi
+	ok=0
+	checkFile "$BOOT_PATH$e_initrd"
+	checkFile "$BOOT_PATH$e_linux"
 
-	if [ -f $BOOT_PATH$e_linux ]
+	if [ $ok -ne 0 ]
 	then
-		echo -e "\t\tFound kernel image: $BOOT_PATH$e_linux"
-	else
-		echo -e "\t\tMissing kernel image $BOOT_PATH$e_linux, aborting."
-		return
+		echo -e "\t\tSomething's missing, aborting..."
+		return 1
 	fi
 
 	# Write config...
@@ -74,9 +80,10 @@ function writeLoaderConf
 	res+="machine-id $MACHINE_ID\n"
 	res+="linux	$e_linux\n"
 
-	if [ -f $BOOT_PATH/intel-ucode.img ]
+	ok=0
+	checkFile "$BOOT_PATH/intel-ucode.img"
+	if [ $ok -eq 0 ]
 	then
-		echo -e "\t\tFound: $BOOT_PATH/intel-ucode.img"
 		res+="initrd	/intel-ucode.img\n"
 
 	fi
@@ -84,22 +91,22 @@ function writeLoaderConf
 	res+="initrd	$e_initrd\n"
 	res+="options	$e_options\n"
 
-	echo -e "\t\tWriting boot entry: $e_file"
-	echo -en "$res" > $e_file
+	echo -e "\t\tWriting:\t$e_file\n"
+	echo -en "$res" > "$e_file"
 }
 
-echo Removing old entries...
-rm -rfv $LOADER_ENTRIES_PATH/$ENTRY_FILENAME_PREFIX-*
+echo 'Removing old entries...'
+rm -rfv "$LOADER_ENTRIES_PATH/$ENTRY_FILENAME_PREFIX"-*
 
 PRESETS=$(ls /etc/mkinitcpio.d/*.preset)
 
 for preset in $PRESETS
 do
-	preset=$(echo $preset | rev | cut -d'/' -f 1 - | rev | cut -d'.' -f 1 -)
-	echo -e "Generating $preset entries:"
+	preset=$(echo "$preset" | rev | cut -d'/' -f 1 - | rev | cut -d'.' -f 1 -)
+	echo -e "\nGenerating $preset entries:"
 	echo -e "\tGenerating default entry:"
-	writeLoaderConf $preset 'default'
+	writeLoaderConf "$preset" 'default'
 	echo -e "\tGenerating fallback entry:"
-	writeLoaderConf $preset 'fallback'
+	writeLoaderConf "$preset" 'fallback'
 done
 
