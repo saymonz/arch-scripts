@@ -1,0 +1,105 @@
+#!/usr/bin/bash
+
+if [ $(whoami) != 'root' ]
+then
+	echo -e "This script must be run as root. Exiting."
+	exit
+fi
+
+# USER CONFIG
+BOOT_PATH='/boot'
+LOADER_ENTRIES_PATH='/boot/loader/entries'
+
+# OS pretty name, showed in bootmenu entries
+OS_PRETTY_NAME=$(grep '^PRETTY_NAME=' /etc/os-release | cut -d'=' -f 2)
+
+# OS ID (shortname), used in entries filename by default
+OS_ID=$(grep '^ID=' /etc/os-release | cut -d'=' -f 2)
+
+# Machine ID, randomly created on OS install, used in entries filename by default
+MACHINE_ID=$(cat /etc/machine-id)
+
+# Entries filename prefix
+ENTRY_FILENAME_PREFIX="$MACHINE_ID-$OS_ID"
+
+# Kernel command line for normal boot
+KERN_CMDLINE_DEFAULT='root=UUID=3a41b659-2130-41ec-bc8f-a5c1bf67b845 rw quiet loglevel=3 rd.systemd.show_status=false rd.udev.log_priority=3 nowatchdog'
+
+# Kernel command line for fallback boot
+KERN_CMDLINE_FALLBACK='root=UUID=3a41b659-2130-41ec-bc8f-a5c1bf67b845 rw'
+
+function writeLoaderConf
+{
+#	kver="$(LANG=C pacman -Qi $1 | grep "Version" | cut -d':' -f 2 | xargs)"
+
+	e_linux="/vmlinuz-$1"
+
+	if [ $2 == "default" ]
+	then
+		e_version="$1"
+		e_initrd="/initramfs-$1.img"
+		e_options="$KERN_CMDLINE_DEFAULT"
+	elif [ $2 == 'fallback' ]
+	then
+		e_version="$1-fallback"
+		e_initrd="/initramfs-$1-fallback.img"
+		e_options="$KERN_CMDLINE_FALLBACK"
+	else
+		echo -e "\e\eUnrecognized preset: $1, aborting."
+	fi
+
+	e_file="$LOADER_ENTRIES_PATH/$ENTRY_FILENAME_PREFIX-$e_version.conf"
+
+
+	# We check everything is there...
+	if [ -f $BOOT_PATH$e_initrd ]
+	then
+		echo -e "\t\tFound initramfs: $BOOT_PATH$e_initrd"
+	else
+		echo -e "\t\tMissing initramfs $BOOT_PATH$e_initrd, aborting."
+		return
+	fi
+
+	if [ -f $BOOT_PATH$e_linux ]
+	then
+		echo -e "\t\tFound kernel image: $BOOT_PATH$e_linux"
+	else
+		echo -e "\t\tMissing kernel image $BOOT_PATH$e_linux, aborting."
+		return
+	fi
+
+	# Write config...
+	res="title	$OS_PRETTY_NAME\n"
+	res+="version    $e_version\n"
+	res+="machine-id $MACHINE_ID\n"
+	res+="linux	$e_linux\n"
+
+	if [ -f $BOOT_PATH/intel-ucode.img ]
+	then
+		echo -e "\t\tFound: $BOOT_PATH/intel-ucode.img"
+		res+="initrd	/intel-ucode.img\n"
+
+	fi
+
+	res+="initrd	$e_initrd\n"
+	res+="options	$e_options\n"
+
+	echo -e "\t\tWriting boot entry: $e_file"
+	echo -en "$res" > $e_file
+}
+
+echo Removing old entries...
+rm -rfv $LOADER_ENTRIES_PATH/$ENTRY_FILENAME_PREFIX-*
+
+PRESETS=$(ls /etc/mkinitcpio.d/*.preset)
+
+for preset in $PRESETS
+do
+	preset=$(echo $preset | rev | cut -d'/' -f 1 - | rev | cut -d'.' -f 1 -)
+	echo -e "Generating $preset entries:"
+	echo -e "\tGenerating default entry:"
+	writeLoaderConf $preset 'default'
+	echo -e "\tGenerating fallback entry:"
+	writeLoaderConf $preset 'fallback'
+done
+
