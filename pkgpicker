@@ -1,0 +1,94 @@
+#!/bin/zsh
+
+if [ "$1" '==' "helper" ] # Helper part
+then
+	if [ -z $2 ]
+	then
+		exit
+	fi
+
+	pkg=$2
+
+	yay -Ss "$pkg" | grep -A 1 -P "^\w+/$pkg "
+
+	echo
+
+	pkginfo=$(yay -Qi "$pkg" |& cat -)
+
+	if [ $(echo "$pkginfo" | wc -l) -eq 1 ]
+	then
+		pkginfo=$(yay -Si "$pkg" | grep -v "^:: Querying AUR...$")
+	else
+		pkginfo+="\n\n"
+		pkginfo+=$(yay -Ql $pkg)
+	fi
+	echo "$pkginfo"
+	exit
+fi
+
+# Main script
+list=""
+for arg in "$@"
+do
+	if [ -v endargs ]
+	then
+		cmd+="$arg "
+		continue
+	fi
+
+	case $arg in
+		"repo")
+			list+=$(yay -Pc | grep -v 'AUR$' | cut -f 1 -)
+		;;
+		"aur")
+			list+=$(yay -Pc | grep 'AUR$' | cut -f 1 -)
+		;;
+
+		"local")
+			list+=$(pacman -Qq)
+		;;
+		"explicit")
+			list+=$(pacman -Qeq)
+		;;
+		"skipbase")
+			skipbase="1"
+		;;
+		"skipinstalled")
+			skipinstalled="1"
+		;;
+		"//")
+			endargs=1
+			cmd=""
+	esac
+done
+
+list=$(echo $list | sort | uniq -u)
+if [ -v skipbase ]
+then
+	list=$(comm -23 <(echo "$list") <(pacman -Qgq base base-devel | sort))
+fi
+
+if [ -v skipinstalled ]
+then
+	list=$(comm -23 <(echo "$list") <(pacman -Qq | sort))
+fi
+
+if [ -z $list ]
+then
+	echo "Empty package list!"
+	echo "Usage: pkgpicker [source] [options] // [command]"
+	exit
+fi
+
+sel=$(echo "$list" | fzf -m --reverse --preview "$(cd "$(dirname "$0")"; pwd -P)/pkgpicker helper {}" --preview-window=60%:wrap)
+sel=${sel//$'\n'/ }
+
+
+if [ -v cmd ]
+then
+	echo "$cmd $sel"
+	eval $(echo "$cmd $sel")
+else
+	echo "$sel"
+fi
+
